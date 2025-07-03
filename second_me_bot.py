@@ -1,5 +1,7 @@
 import os
 import telebot
+from keep_alive import keep_alive
+keep_alive()
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 TOKEN = os.environ.get("BOT_TOKEN")

@@ -1,24 +1,50 @@
+import os
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-import os
 TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = 6756150197  # آی‌دی عددی خودت رو بذار اینجا
 
 bot = telebot.TeleBot(TOKEN)
 
+# لیست کاربران بی‌صدا شده
+muted_users = set()
+
 # برای ذخیره‌سازی اینکه ادمین قراره به کی جواب بده
 admin_target = {
-    'mode': None,  # 'reply' یا 'direct'
+    'mode': None,
     'user_id': None,
     'reply_to': None
 }
 
-# 📥 کاربر پیام می‌فرسته → می‌ره برای ادمین
+# ⛔ دستور mute و unmute فقط برای ادمین
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text.startswith("/mute"))
+def mute_user(message):
+    try:
+        user_id = int(message.text.split()[1])
+        muted_users.add(user_id)
+        bot.send_message(ADMIN_ID, f"🔇 کاربر {user_id} بی‌صدا شد.")
+    except:
+        bot.send_message(ADMIN_ID, "❌ استفاده صحیح: /mute <user_id>")
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text.startswith("/unmute"))
+def unmute_user(message):
+    try:
+        user_id = int(message.text.split()[1])
+        muted_users.discard(user_id)
+        bot.send_message(ADMIN_ID, f"🔊 کاربر {user_id} از حالت بی‌صدا خارج شد.")
+    except:
+        bot.send_message(ADMIN_ID, "❌ استفاده صحیح: /unmute <user_id>")
+
+# 📥 پیام از کاربر → اگه بی‌صدا نبود می‌ره برای ادمین
 @bot.message_handler(func=lambda m: m.chat.type == 'private' and m.from_user.id != ADMIN_ID,
                      content_types=['text', 'photo', 'voice', 'video', 'document', 'audio', 'sticker', 'animation', 'video_note'])
 def handle_user_message(message):
     user = message.from_user
+    if user.id in muted_users:
+        return  # اگه بی‌صدا بود، هیچی ارسال نکن
+
+    username = f"@{user.username}" if user.username else "ندارد"
     caption = message.caption or ''
     text = message.text or ''
     content = caption or text or '📎 پیام جدید'
@@ -30,23 +56,24 @@ def handle_user_message(message):
         InlineKeyboardButton("🔁 ریپلای به این پیام", callback_data=f"reply_{user.id}_{message.message_id}")
     )
 
-    # ارسال به ادمین با توجه به نوع پیام
+    message_header = f"👤 از {user.first_name}\n🆔 آی‌دی: {user.id}\n🧷 یوزرنیم: {username}"
+
     if message.content_type == 'text':
-        bot.send_message(ADMIN_ID, f"📨 از {user.first_name}:\n\n{text}", reply_markup=keyboard)
+        bot.send_message(ADMIN_ID, f"{message_header}\n\n{text}", reply_markup=keyboard)
     elif message.content_type == 'photo':
-        bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=f"📸 از {user.first_name}:\n\n{caption}", reply_markup=keyboard)
+        bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=f"{message_header}\n\n{caption}", reply_markup=keyboard)
     elif message.content_type == 'voice':
-        bot.send_voice(ADMIN_ID, message.voice.file_id, caption=f"🎤 از {user.first_name}:", reply_markup=keyboard)
+        bot.send_voice(ADMIN_ID, message.voice.file_id, caption=message_header, reply_markup=keyboard)
     elif message.content_type == 'video':
-        bot.send_video(ADMIN_ID, message.video.file_id, caption=f"🎞️ از {user.first_name}:\n\n{caption}", reply_markup=keyboard)
+        bot.send_video(ADMIN_ID, message.video.file_id, caption=f"{message_header}\n\n{caption}", reply_markup=keyboard)
     elif message.content_type == 'document':
-        bot.send_document(ADMIN_ID, message.document.file_id, caption=f"📎 از {user.first_name}:\n\n{caption}", reply_markup=keyboard)
+        bot.send_document(ADMIN_ID, message.document.file_id, caption=f"{message_header}\n\n{caption}", reply_markup=keyboard)
     elif message.content_type == 'audio':
-        bot.send_audio(ADMIN_ID, message.audio.file_id, caption=f"🎵 از {user.first_name}:\n\n{caption}", reply_markup=keyboard)
+        bot.send_audio(ADMIN_ID, message.audio.file_id, caption=f"{message_header}\n\n{caption}", reply_markup=keyboard)
     elif message.content_type == 'sticker':
         bot.send_sticker(ADMIN_ID, message.sticker.file_id, reply_markup=keyboard)
     elif message.content_type == 'animation':
-        bot.send_animation(ADMIN_ID, message.animation.file_id, caption=f"🎞️ گیف از {user.first_name}:", reply_markup=keyboard)
+        bot.send_animation(ADMIN_ID, message.animation.file_id, caption=message_header, reply_markup=keyboard)
     elif message.content_type == 'video_note':
         bot.send_video_note(ADMIN_ID, message.video_note.file_id, reply_markup=keyboard)
 

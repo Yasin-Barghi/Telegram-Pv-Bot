@@ -6,6 +6,7 @@ TOKEN = os.getenv("BOT_TOKEN")  # از متغیر محیطی گرفته میشه
 ADMIN_ID = int(os.getenv("ADMIN_ID"))  # عددی
 
 bot = telebot.TeleBot(TOKEN)
+bot.infinity_polling()
 
 admin_target = {
     'mode': None,  # 'reply' یا 'direct'

@@ -1,85 +1,53 @@
 import os
 import telebot
-from keep_alive import keep_alive
-keep_alive()
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_ID = 6756150197  # آی‌دی عددی خودت رو بذار اینجا
+TOKEN = os.getenv("BOT_TOKEN")  # از متغیر محیطی گرفته میشه
+ADMIN_ID = int(os.getenv("ADMIN_ID"))  # عددی
 
 bot = telebot.TeleBot(TOKEN)
 
-# لیست کاربران بی‌صدا شده
-muted_users = set()
-
-# برای ذخیره‌سازی اینکه ادمین قراره به کی جواب بده
 admin_target = {
-    'mode': None,
+    'mode': None,  # 'reply' یا 'direct'
     'user_id': None,
     'reply_to': None
 }
 
-# ⛔ دستور mute و unmute فقط برای ادمین
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text.startswith("/mute"))
-def mute_user(message):
-    try:
-        user_id = int(message.text.split()[1])
-        muted_users.add(user_id)
-        bot.send_message(ADMIN_ID, f"🔇 کاربر {user_id} بی‌صدا شد.")
-    except:
-        bot.send_message(ADMIN_ID, "❌ استفاده صحیح: /mute <user_id>")
-
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text.startswith("/unmute"))
-def unmute_user(message):
-    try:
-        user_id = int(message.text.split()[1])
-        muted_users.discard(user_id)
-        bot.send_message(ADMIN_ID, f"🔊 کاربر {user_id} از حالت بی‌صدا خارج شد.")
-    except:
-        bot.send_message(ADMIN_ID, "❌ استفاده صحیح: /unmute <user_id>")
-
-# 📥 پیام از کاربر → اگه بی‌صدا نبود می‌ره برای ادمین
 @bot.message_handler(func=lambda m: m.chat.type == 'private' and m.from_user.id != ADMIN_ID,
                      content_types=['text', 'photo', 'voice', 'video', 'document', 'audio', 'sticker', 'animation', 'video_note'])
 def handle_user_message(message):
     user = message.from_user
-    if user.id in muted_users:
-        return  # اگه بی‌صدا بود، هیچی ارسال نکن
-
-    username = f"@{user.username}" if user.username else "ندارد"
     caption = message.caption or ''
     text = message.text or ''
     content = caption or text or '📎 پیام جدید'
 
-    # دکمه‌ها
     keyboard = InlineKeyboardMarkup()
     keyboard.add(
-        InlineKeyboardButton("✉️ پاسخ مستقیم", callback_data=f"direct_{user.id}"),
+        InlineKeyboardButton("✉️ پیام مستقیم", callback_data=f"direct_{user.id}"),
         InlineKeyboardButton("🔁 ریپلای به این پیام", callback_data=f"reply_{user.id}_{message.message_id}")
     )
 
-    message_header = f"👤 از {user.first_name}\n🆔 آی‌دی: {user.id}\n🧷 یوزرنیم: {username}"
+    sender_info = f"از {user.first_name} (@" + (user.username or "ندارد") + ")"
 
     if message.content_type == 'text':
-        bot.send_message(ADMIN_ID, f"{message_header}\n\n{text}", reply_markup=keyboard)
+        bot.send_message(ADMIN_ID, f"📨 {sender_info}:\n\n{text}", reply_markup=keyboard)
     elif message.content_type == 'photo':
-        bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=f"{message_header}\n\n{caption}", reply_markup=keyboard)
+        bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=f"📸 {sender_info}:\n\n{caption}", reply_markup=keyboard)
     elif message.content_type == 'voice':
-        bot.send_voice(ADMIN_ID, message.voice.file_id, caption=message_header, reply_markup=keyboard)
+        bot.send_voice(ADMIN_ID, message.voice.file_id, caption=f"🎤 {sender_info}:", reply_markup=keyboard)
     elif message.content_type == 'video':
-        bot.send_video(ADMIN_ID, message.video.file_id, caption=f"{message_header}\n\n{caption}", reply_markup=keyboard)
+        bot.send_video(ADMIN_ID, message.video.file_id, caption=f"🎞️ {sender_info}:\n\n{caption}", reply_markup=keyboard)
     elif message.content_type == 'document':
-        bot.send_document(ADMIN_ID, message.document.file_id, caption=f"{message_header}\n\n{caption}", reply_markup=keyboard)
+        bot.send_document(ADMIN_ID, message.document.file_id, caption=f"📎 {sender_info}:\n\n{caption}", reply_markup=keyboard)
     elif message.content_type == 'audio':
-        bot.send_audio(ADMIN_ID, message.audio.file_id, caption=f"{message_header}\n\n{caption}", reply_markup=keyboard)
+        bot.send_audio(ADMIN_ID, message.audio.file_id, caption=f"🎵 {sender_info}:\n\n{caption}", reply_markup=keyboard)
     elif message.content_type == 'sticker':
         bot.send_sticker(ADMIN_ID, message.sticker.file_id, reply_markup=keyboard)
     elif message.content_type == 'animation':
-        bot.send_animation(ADMIN_ID, message.animation.file_id, caption=message_header, reply_markup=keyboard)
+        bot.send_animation(ADMIN_ID, message.animation.file_id, caption=f"🎞️ گیف {sender_info}:", reply_markup=keyboard)
     elif message.content_type == 'video_note':
         bot.send_video_note(ADMIN_ID, message.video_note.file_id, reply_markup=keyboard)
 
-# 📌 ادمین یکی از دکمه‌ها رو می‌زنه
 @bot.callback_query_handler(func=lambda call: call.data.startswith(('reply_', 'direct_')))
 def callback_handler(call):
     global admin_target
@@ -89,15 +57,14 @@ def callback_handler(call):
         _, user_id, reply_to = data.split('_')
         admin_target = {'mode': 'reply', 'user_id': int(user_id), 'reply_to': int(reply_to)}
         bot.answer_callback_query(call.id, "🔁 حالت ریپلای فعال شد")
-        bot.send_message(ADMIN_ID, f"🔁 حالا پیام بفرست تا به پیام کاربر {user_id} ریپلای بشه.")
+        bot.send_message(ADMIN_ID, f"🔁 حالا پیام بفرست تا به پیام کاربر @{user_id} ریپلای بشه.")
 
     elif data.startswith('direct_'):
         _, user_id = data.split('_')
         admin_target = {'mode': 'direct', 'user_id': int(user_id), 'reply_to': None}
         bot.answer_callback_query(call.id, "✉️ حالت پیام مستقیم فعال شد")
-        bot.send_message(ADMIN_ID, f"✉️ حالا پیام بفرست تا مستقیماً برای کاربر {user_id} ارسال بشه.")
+        bot.send_message(ADMIN_ID, f"✉️ حالا پیام بفرست تا مستقیماً برای کاربر @{user_id} ارسال بشه.")
 
-# 📨 ادمین پیام می‌فرسته
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID,
                      content_types=['text', 'photo', 'voice', 'video', 'document', 'audio', 'sticker', 'animation', 'video_note'])
 def handle_admin_send(message):
@@ -133,6 +100,5 @@ def handle_admin_send(message):
     except Exception as e:
         bot.send_message(ADMIN_ID, f"❌ خطا در ارسال پیام:\n{e}")
 
-# ▶️ اجرا
 print("🤖 Bot is running...")
 bot.infinity_polling()

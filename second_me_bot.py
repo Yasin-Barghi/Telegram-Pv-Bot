@@ -1,40 +1,23 @@
 import os
 import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from threading import Thread
 from flask import Flask
+from threading import Thread
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# ⚙️ متغیرهای محیطی
+# توکن و آیدی ادمین از متغیر محیطی
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
-# 🤖 ساخت بات
 bot = telebot.TeleBot(TOKEN)
 
-# 🔁 حذف Webhook قبلی برای جلوگیری از ارور 409
-def run_bot():
-    print("🤖 Bot polling is running...")
-    bot.delete_webhook()
-    bot.infinity_polling()
-
-# 🌐 Flask app برای باز کردن پورت جهت Render
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return '✅ Bot is alive!', 200
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
-
-# 💬 مدیریت پیام‌ها
+# وضعیت هدف پیام‌ها
 admin_target = {
-    'mode': None,
+    'mode': None,  # 'reply' یا 'direct'
     'user_id': None,
     'reply_to': None
 }
 
+# هندل پیام از کاربران (غیر از ادمین)
 @bot.message_handler(func=lambda m: m.chat.type == 'private' and m.from_user.id != ADMIN_ID,
                      content_types=['text', 'photo', 'voice', 'video', 'document', 'audio', 'sticker', 'animation', 'video_note'])
 def handle_user_message(message):
@@ -70,28 +53,31 @@ def handle_user_message(message):
     elif message.content_type == 'video_note':
         bot.send_video_note(ADMIN_ID, message.video_note.file_id, reply_markup=keyboard)
 
+# هندل دکمه‌های ادمین
 @bot.callback_query_handler(func=lambda call: call.data.startswith(('reply_', 'direct_')))
 def callback_handler(call):
     global admin_target
-    data = call.data
+    try:
+        if call.data.startswith('reply_'):
+            _, user_id, reply_to = call.data.split('_')
+            admin_target = {'mode': 'reply', 'user_id': int(user_id), 'reply_to': int(reply_to)}
+            bot.answer_callback_query(call.id, "🔁 حالت ریپلای فعال شد")
+            bot.send_message(ADMIN_ID, f"🔁 حالا پیام بفرست تا به پیام کاربر ارسال بشه.")
 
-    if data.startswith('reply_'):
-        _, user_id, reply_to = data.split('_')
-        admin_target = {'mode': 'reply', 'user_id': int(user_id), 'reply_to': int(reply_to)}
-        bot.answer_callback_query(call.id, "🔁 حالت ریپلای فعال شد")
-        bot.send_message(ADMIN_ID, f"🔁 حالا پیام بفرست تا به پیام کاربر @{user_id} ریپلای بشه.")
+        elif call.data.startswith('direct_'):
+            _, user_id = call.data.split('_')
+            admin_target = {'mode': 'direct', 'user_id': int(user_id), 'reply_to': None}
+            bot.answer_callback_query(call.id, "✉️ حالت پیام مستقیم فعال شد")
+            bot.send_message(ADMIN_ID, f"✉️ حالا پیام بفرست تا مستقیماً برای کاربر ارسال بشه.")
+    except Exception as e:
+        bot.send_message(ADMIN_ID, f"❌ خطا در فعال‌سازی دکمه: {e}")
 
-    elif data.startswith('direct_'):
-        _, user_id = data.split('_')
-        admin_target = {'mode': 'direct', 'user_id': int(user_id), 'reply_to': None}
-        bot.answer_callback_query(call.id, "✉️ حالت پیام مستقیم فعال شد")
-        bot.send_message(ADMIN_ID, f"✉️ حالا پیام بفرست تا مستقیماً برای کاربر @{user_id} ارسال بشه.")
-
+# پیام‌های ادمین برای کاربر
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID,
                      content_types=['text', 'photo', 'voice', 'video', 'document', 'audio', 'sticker', 'animation', 'video_note'])
 def handle_admin_send(message):
     if admin_target['user_id'] is None:
-        bot.send_message(ADMIN_ID, "⚠️ لطفاً اول یکی از دکمه‌های زیر پیام کاربران رو بزن.")
+        bot.send_message(ADMIN_ID, "⚠️ لطفاً یکی از دکمه‌های پاسخ رو بزن.")
         return
 
     user_id = admin_target['user_id']
@@ -118,11 +104,22 @@ def handle_admin_send(message):
             bot.send_video_note(user_id, message.video_note.file_id, reply_to_message_id=reply_to)
 
         bot.send_message(ADMIN_ID, "✅ پیام ارسال شد.")
-
     except Exception as e:
         bot.send_message(ADMIN_ID, f"❌ خطا در ارسال پیام:\n{e}")
 
-# 🔄 اجرای همزمان بات و وب‌سرور
-if __name__ == "__main__":
-    Thread(target=run_bot).start()
-    run_flask()
+# سرویس Flask برای جلوگیری از خاموش شدن Render
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def index():
+    return "✅ Bot is alive."
+
+def run_flask():
+    flask_app.run(host="0.0.0.0", port=10000)
+
+# اجرای Flask در ترد جدا
+Thread(target=run_flask).start()
+
+# اجرای بات
+print("🤖 Bot polling is running...")
+bot.infinity_polling()

@@ -15,6 +15,7 @@ def echo(message):
 # تابع اجرای بات
 def run_bot():
     print("🤖 Bot polling is running...")
+    bot.delete_webhook()  # 🔧 این خط ارور 409 رو حل می‌کنه
     bot.infinity_polling()
 
 # ساخت Flask برای پورت
